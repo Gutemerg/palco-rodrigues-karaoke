@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1033"/>
+      <stop offset="1" stop-color="#0b0b12"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3d81"/>
+      <stop offset=".5" stop-color="#ff8a3d"/>
+      <stop offset="1" stop-color="#ffd23d"/>
+    </linearGradient>
+    <linearGradient id="mic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9e3ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".42" r=".55">
+      <stop offset="0" stop-color="#ff3d81" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ff3d81" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd23d" stop-opacity=".0"/>
+      <stop offset="1" stop-color="#ffd23d" stop-opacity=".22"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- feixe de luz de palco -->
+  <path d="M256 40 L150 400 H362 Z" fill="url(#beam)"/>
+  <circle cx="256" cy="230" r="190" fill="url(#glow)"/>
+  <!-- anel / disco -->
+  <circle cx="256" cy="232" r="148" fill="none" stroke="url(#ring)" stroke-width="22"/>
+  <!-- ondas de som -->
+  <path d="M146 196 a120 120 0 0 0 0 72" fill="none" stroke="#ffd23d" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+  <path d="M366 196 a120 120 0 0 1 0 72" fill="none" stroke="#ffd23d" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+  <!-- microfone -->
+  <g transform="rotate(-18 256 240)">
+    <rect x="214" y="120" width="84" height="132" rx="42" fill="url(#mic)"/>
+    <path d="M222 150 h68 M218 176 h76 M218 202 h76" stroke="#c9bdf5" stroke-width="7" stroke-linecap="round"/>
+    <rect x="234" y="250" width="44" height="18" rx="6" fill="#ff3d81"/>
+    <path d="M240 268 L246 388 Q256 402 266 388 L272 268 Z" fill="#ffffff"/>
+  </g>
+  <!-- estrelinhas -->
+  <path d="M392 108 l7 17 17 7 -17 7 -7 17 -7 -17 -17 -7 17 -7z" fill="#ffd23d"/>
+  <path d="M118 120 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5z" fill="#ffffff" opacity=".85"/>
+  <!-- palco -->
+  <path d="M96 420 Q256 384 416 420 L416 432 Q256 400 96 432 Z" fill="url(#ring)"/>
+</svg>
