@@ -10,6 +10,9 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://www.youtube.com">
+<link rel="preconnect" href="https://i.ytimg.com">
+<link rel="preconnect" href="https://www.google.com">
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -149,6 +152,30 @@ nav button.on{color:#fff}
 .tapplay .playbtn{width:72px;height:72px}
 .tapplay .playbtn svg{width:36px;height:36px}
 #np .video{position:relative}
+/* letra sincronizada (estilo Spotify) */
+.lyr{overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent);mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent)}
+.lyr .ln{font-weight:800;line-height:1.25;color:rgba(255,255,255,.55);margin:0 0 .55em;transition:color .25s,transform .25s;transform-origin:left center}
+.lyr .ln.past{color:rgba(255,255,255,.5)}
+.lyr .ln.cur{color:#fff;transform:scale(1.05);text-shadow:0 2px 18px rgba(0,0,0,.25)}
+.lyr .ln.gap{color:transparent;height:.6em}
+.lyr .inner{padding-right:6%;transition:transform .45s cubic-bezier(.2,.7,.2,1);will-change:transform}
+.lyr .empty{color:rgba(255,255,255,.7);font-weight:700}
+.sync{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12px;color:rgba(255,255,255,.75)}
+.sync button{background:rgba(0,0,0,.3);border-radius:99px;padding:6px 12px;font-weight:700;font-size:13px}
+.vtog{display:flex;gap:6px}
+.vtog button{padding:6px 12px;border-radius:99px;background:rgba(255,255,255,.12);font-size:13px;font-weight:700}
+.vtog button.on{background:#fff;color:#000}
+#np.lyrmode{background:var(--lyrbg,#1c3d8f)}
+#np.lyrmode .video{width:42%;align-self:flex-end;margin:6px 0 0}
+#npLyrics{flex:1;min-height:0;margin-top:10px;font-size:27px}
+#np.lyrmode .nph{order:0}#np.lyrmode #npMedia{order:1}#np.lyrmode #npTitle{order:2;margin-top:-4px}#np.lyrmode #npArtist{order:3}
+#np.lyrmode #npLyrics{order:4}#np.lyrmode #npSync{order:5;margin-top:8px}#np.lyrmode #npBtns{order:6;margin-top:10px!important}
+#np.lyrmode #npNext,#np.lyrmode #npResult:empty{display:none}
+#scr .lyrpane{position:absolute;inset:0;z-index:4;background:var(--lyrbg,#1c3d8f);padding:9vw 7vw 6vw;display:none}
+#scr.lyr-on .lyrpane{display:block}
+#scr .lyrpane .lyr{height:100%;font-size:4.2vw}
+#scr.lyr-on #player{left:auto;top:auto;right:2.2vw;bottom:12vw;width:24vw;height:13.5vw;border-radius:1vw;overflow:hidden;z-index:7;box-shadow:0 1vw 3vw rgba(0,0,0,.5)}
+#scr.lyr-on .ov-code{display:none}
 .toast{position:fixed;left:50%;bottom:calc(140px + var(--safe-b));transform:translateX(-50%);background:#fff;color:#000;padding:11px 18px;border-radius:8px;font-weight:600;z-index:60;font-size:14px;max-width:90vw;text-align:center}
 
 /* ---------- SCREEN (projector) ---------- */
@@ -246,9 +273,11 @@ nav button.on{color:#fff}
     <div class="nph">
       <button id="npClose" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="m7.4 8.6 4.6 4.6 4.6-4.6L18 10l-6 6-6-6z"/></svg></button>
       <small class="muted" id="npWhere">Tocando no projetor</small>
-      <span style="width:24px"></span>
+      <div class="vtog hidden" id="vtog"><button data-v="letra">Letra</button><button data-v="video">Vídeo</button></div>
     </div>
     <div id="npMedia"></div>
+    <div id="npLyrics" class="hidden"></div>
+    <div class="sync hidden" id="npSync">Sincronia da letra <button data-d="-0.5">−0,5s</button><span id="npOff">0s</span><button data-d="0.5">+0,5s</button></div>
     <b id="npTitle" style="font-size:22px" class="ell"></b>
     <span id="npArtist" class="muted"></span>
     <div class="livebox">
@@ -259,7 +288,7 @@ nav button.on{color:#fff}
       </div>
     </div>
     <div id="npResult" class="hidden"></div>
-    <div style="display:flex;gap:10px;margin-top:16px;justify-content:center">
+    <div id="npBtns" style="display:flex;gap:10px;margin-top:16px;justify-content:center">
             <button class="btn btn-ghost" id="npSkip">Pular</button>
     </div>
     <div id="npNext" style="margin-top:18px;overflow-y:auto;flex:1;min-height:0"></div>
@@ -275,6 +304,7 @@ nav button.on{color:#fff}
     <div class="vt"><div class="zone"></div><div class="dot" id="ovDot"></div></div>
     <div><div class="num" id="ovNum">0</div><small>pontos</small><div class="ov-combo" id="ovCombo"></div></div>
   </div>
+  <div class="lyrpane" id="scrLyrPane"><div id="scrLyr"></div></div>
   <div class="ov ov-code" id="ovCode"></div>
   <div class="ov hidden" id="scrDiag" style="left:50%;bottom:2.2vw;transform:translateX(-50%);background:rgba(0,0,0,.6);padding:.5vw 1vw;border-radius:8px;font-size:1vw;color:var(--tx2);z-index:11"></div>
   <div class="idle" id="idle"></div>
@@ -342,7 +372,7 @@ function dz(path,p={}){
 }
 const mapTrack=t=>({id:t.id,title:t.title_short||t.title,artist:t.artist?.name||'',artistId:t.artist?.id,
   cover:t.album?.cover_medium||t.artist?.picture_medium||'',coverXl:t.album?.cover_xl||t.album?.cover_big||t.album?.cover_medium||'',
-  artistPic:t.artist?.picture_medium||''});
+  artistPic:t.artist?.picture_medium||'',duration:t.duration||0});
 const cache={};
 async function cached(key,fn,ttl=30*60e3){
   const c=cache[key]||store.get('c.'+key,null);
@@ -412,15 +442,82 @@ const YTS={
     if(vc[k])return vc[k];
     const items=await this.search(`${t.artist} ${t.title} karaoke`,8);
     if(!items.length)throw new Error('Nenhuma versão karaokê encontrada');
-    const score=i=>(/karaok/i.test(i.title)?3:0)+(/playback|instrumental|sem voz/i.test(i.title)?1:0)+(/live|ao vivo|reaction|cover/i.test(i.title)?-2:0);
+    const td=t.duration||0;
+    const durScore=i=>{if(!td||!i.dur)return 0;const d=i.dur-td;return d>=-3&&d<=12?3:Math.abs(d)<=25?1:Math.abs(d)>45?-3:0};
+    const score=i=>(/karaok/i.test(i.title)?3:0)+(/playback|instrumental|sem voz/i.test(i.title)?1:0)+(/live|ao vivo|reaction|cover/i.test(i.title)?-2:0)+durScore(i);
     items.sort((a,b)=>score(b)-score(a));
-    const v={id:items[0].id,title:items[0].title,alts:items.slice(1).map(i=>i.id)};
+    const top=items[0],diff=(td&&top.dur)?top.dur-td:0;
+    const v={id:top.id,title:top.title,dur:top.dur||0,offset:(diff>0&&diff<=15)?diff:0,alts:items.slice(1).map(i=>i.id)};
     vc[k]=v;store.set('vcache',vc);return v;
   },
   async options(t){return this.search(`${t.artist} ${t.title} karaoke`,10)},
   setChoice(t,v){const vc=store.get('vcache',{});vc[(t.artist+'|'+t.title).toLowerCase()]=v;store.set('vcache',vc)},
   parseUrl(s){const m=String(s).match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);return m?m[1]:null}
 };
+const Lyrics={
+  key(t){return (t.artist+'|'+t.title).toLowerCase()},
+  async get(t){
+    const k='lrc.'+this.key(t);const c=store.get(k,undefined);
+    if(c!==undefined)return c;
+    try{
+      const r=await fetch('/api/lyrics?'+new URLSearchParams({artist:t.artist,title:t.title,duration:String(t.duration||0)}));
+      const d=await r.json();
+      const lines=d.synced?this.parse(d.synced):null;
+      store.set(k,lines);return lines;
+    }catch(e){return null}
+  },
+  parse(txt){
+    const out=[];
+    txt.split(/\r?\n/).forEach(l=>{
+      const tags=[...l.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];if(!tags.length)return;
+      const text=l.replace(/\[[^\]]*\]/g,'').trim();
+      tags.forEach(m=>out.push({t:+m[1]*60+ +m[2],text}));
+    });
+    return out.sort((a,b)=>a.t-b.t);
+  },
+  offKey(t){return 'off.'+this.key(t)},
+  getOffset(it){const o=store.get(this.offKey(it.track),null);return o!=null?o:(it.video.offset||0)},
+  setOffset(it,v){store.set(this.offKey(it.track),Math.round(v*10)/10)}
+};
+const LYR_COLORS=['#1c3d8f','#7a1f4a','#0f5c4d','#6b3fa0','#9a3412','#1e3a5f','#8a1538','#2f4f1f'];
+function lyrColor(t){let h=0;for(const c of (t.artist+t.title))h=(h*31+c.charCodeAt(0))>>>0;return LYR_COLORS[h%LYR_COLORS.length]}
+class LyricsView{
+  constructor(el){this.el=el;this.el.classList.add('lyr');this.el.innerHTML='<div class="inner"></div>';this.inner=el.firstChild;this.lines=null;this.idx=-2}
+  set(lines,msg){
+    this.lines=lines;this.idx=-2;
+    if(!lines||!lines.length){this.inner.innerHTML=`<div class="empty">${esc(msg||'Letra sincronizada não encontrada pra essa música')}</div>`;this.inner.style.transform='';return}
+    this.inner.innerHTML=lines.map(l=>`<div class="ln${l.text?'':' gap'}">${esc(l.text||'·')}</div>`).join('');
+    this.rows=[...this.inner.children];this.update(0,true);
+  }
+  update(t,force){
+    if(!this.lines||!this.lines.length)return;
+    let i=-1;for(let k=0;k<this.lines.length;k++){if(this.lines[k].t<=t)i=k;else break}
+    if(i===this.idx&&!force)return;this.idx=i;
+    this.rows.forEach((r,k)=>{r.classList.toggle('cur',k===i);r.classList.toggle('past',k<i)});
+    const target=this.rows[Math.max(0,i)];if(!target)return;
+    const y=target.offsetTop-this.el.clientHeight*0.32;
+    this.inner.style.transform=`translateY(${-Math.max(0,y)}px)`;
+  }
+}
+// liga a letra ao player do hub (tela ou modo solo)
+function bindLyrics(hub,view,onState){
+  let curUid=null,raf=0;
+  hub.sub(s=>{
+    if(s._tick)return;
+    const it=s.current;
+    if(!it||s.phase==='idle'){curUid=null;onState&&onState(null);return}
+    if(it.uid===curUid)return;
+    curUid=it.uid;view.set(null,'Carregando a letra…');onState&&onState(it,null);
+    Lyrics.get(it.track).then(lines=>{if(curUid!==it.uid)return;view.set(lines);onState&&onState(it,lines)});
+  });
+  const loop=()=>{
+    raf=requestAnimationFrame(loop);
+    const it=hub.state.current;if(!it||!hub.player||!view.lines)return;
+    let t=0;try{t=hub.player.getCurrentTime()||0}catch(e){}
+    view.update(t-Lyrics.getOffset(it));
+  };
+  loop();
+}
 function decodeHtml(s){const t=document.createElement('textarea');t.innerHTML=s;return t.value}
 let ytReady=null,YT_API=null;
 function loadYT(){
@@ -536,7 +633,7 @@ class Hub{
   }
   sub(fn){this.listeners.add(fn);fn(this.pub())}
   subLive(fn){this.liveListeners.add(fn)}
-  pub(){const s=this.state;return{queue:s.queue,current:s.current,playing:s.playing,phase:s.phase,pos:s.pos,dur:s.dur,ranking:s.ranking.slice(0,30),history:s.history.slice(0,20)}}
+  pub(){const s=this.state;return{view:s.view||store.get('view','letra'),offset:s.current?Lyrics.getOffset(s.current):0,hasLyr:!!s.hasLyr,queue:s.queue,current:s.current,playing:s.playing,phase:s.phase,pos:s.pos,dur:s.dur,ranking:s.ranking.slice(0,30),history:s.history.slice(0,20)}}
   emit(){store.set('hubqueue',this.state.queue);const p=this.pub();this.listeners.forEach(f=>f(p))}
   ensurePlayer(){
     if(this.playerP)return this.playerP;
@@ -563,6 +660,8 @@ class Hub{
       case 'resume':this.player?.playVideo();return;
       case 'live':this.live[m.uid]=m.sum;this.liveListeners.forEach(f=>f(m));return;
       case 'clearRank':this.state.ranking=[];store.set('ranking',[]);return this.emit();
+      case 'view':this.state.view=m.v;store.set('view',m.v);return this.emit();
+      case 'offset':if(this.state.current){Lyrics.setOffset(this.state.current,Lyrics.getOffset(this.state.current)+m.d)}return this.emit();
     }
   }
   add(item,now){
@@ -721,6 +820,15 @@ function runScreen(){
       if(n)$('#ovNext').innerHTML=`Próxima<b>${esc(n.track.title)}</b>${esc(n.singer)}${s.queue.length>1?` · +${s.queue.length-1} na fila`:''}`;
     }else $('#ovNext').classList.add('hidden');
   }
+  const scrLyr=new LyricsView($('#scrLyr'));
+  let hasLyr=false;
+  const applyView=()=>{const on=hasLyr&&(hub.state.view||store.get('view','letra'))==='letra'&&hub.state.phase==='playing';$('#scr').classList.toggle('lyr-on',on)};
+  bindLyrics(hub,scrLyr,(it,lines)=>{
+    hasLyr=!!(lines&&lines.length);hub.state.hasLyr=hasLyr;
+    if(it)$('#scrLyrPane').style.setProperty('--lyrbg',lyrColor(it.track));
+    applyView();if(it&&lines!==null)hub.emit();
+  });
+  hub.sub(s=>{if(!s._tick)applyView()});
   let lastKey='';
   hub.sub(s=>{
     if(s._tick)return;
@@ -759,6 +867,7 @@ function runScreen(){
     const k=e.key;
     if(k==='Enter'||k===' '||k==='MediaPlayPause'){if(hub.needTap)hub.tapPlay();else hub.state.playing?hub.player?.pauseVideo():hub.player?.playVideo();e.preventDefault()}
     else if(k==='ArrowRight'||k==='MediaTrackNext'){hub.next(false)}
+    else if(k==='ArrowUp'){hub.handle({t:'view',v:(hub.state.view||store.get('view','letra'))==='letra'?'video':'letra'})}
   });
 }
 
@@ -785,7 +894,10 @@ function runRemote(solo){
     hub.subLive(m=>paintLive(m));
     hub.onNeedTap(v=>$('#soloTap').classList.toggle('hidden',!v));
     $('#soloTap').onclick=()=>hub.tapPlay();
-    hub.onDiag(t=>{$('#soloDiag').textContent=t});
+    hub.onDiag(t=>{$('#soloDiag').textContent=t==='Tocando'?'':t});
+    hub.ensurePlayer(); // prepara o YouTube logo ao abrir, pra música começar mais rápido
+    const soloLyr=new LyricsView($('#npLyrics'));
+    bindLyrics(hub,soloLyr,(it,lines)=>{hub.state.hasLyr=!!(lines&&lines.length);if(it)$('#np').style.setProperty('--lyrbg',lyrColor(it.track));applyNpView()});
   }else{
     const code=(params.get('sala')||store.get('joined','')).toUpperCase();
     if(code)connect(code);
@@ -798,7 +910,7 @@ function runRemote(solo){
   }
   function onState(s){
     const prevUid=state.current?.uid;state=s;
-    updateMini();updateNP();
+    updateMini();updateNP();applyNpView();
     if(s._tick)return;
     if(s.current?.uid!==prevUid){$('#npScore').textContent='--'}
     if(solo&&s.current&&s.current.uid!==prevUid)$('#np').classList.add('open');
@@ -827,6 +939,19 @@ function runRemote(solo){
   $('#mini').onclick=()=>$('#np').classList.add('open');
   $('#npClose').onclick=()=>$('#np').classList.remove('open');
 
+  function applyNpView(){
+    const v=state.view||store.get('view','letra');
+    const has=solo?!!hub.state.hasLyr:!!state.hasLyr;
+    const lyr=has&&v==='letra'&&state.phase==='playing';
+    $('#vtog').classList.toggle('hidden',!has);
+    $$('#vtog button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+    $('#np').classList.toggle('lyrmode',lyr&&solo);
+    $('#npLyrics').classList.toggle('hidden',!(lyr&&solo));
+    $('#npSync').classList.toggle('hidden',!(has&&v==='letra'));
+    const o=state.offset||0;$('#npOff').textContent=(o>0?'+':'')+String(o).replace('.',',')+'s';
+  }
+  $$('#vtog button').forEach(b=>b.onclick=()=>tr?.send({t:'view',v:b.dataset.v}));
+  $$('#npSync button').forEach(b=>b.onclick=()=>tr?.send({t:'offset',d:+b.dataset.d}));
   function updateMini(){
     const c=state.current,m=$('#mini');
     if(!c||state.phase==='idle'){m.classList.add('hidden');return}

@@ -34,6 +34,19 @@ module.exports = async (req, res) => {
       ch: i.snippet.channelTitle,
       thumb: i.snippet.thumbnails && i.snippet.thumbnails.default && i.snippet.thumbnails.default.url
     }));
+    // duração de cada vídeo (ajuda a escolher a versão que bate com a letra)
+    try {
+      if (items.length) {
+        const r2 = await fetch('https://www.googleapis.com/youtube/v3/videos?' + new URLSearchParams({ part: 'contentDetails', id: items.map(i => i.id).join(','), key }));
+        const d2 = await r2.json();
+        const dur = {};
+        (d2.items || []).forEach(v => {
+          const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(v.contentDetails && v.contentDetails.duration || '');
+          if (m) dur[v.id] = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+        });
+        items.forEach(i => { i.dur = dur[i.id] || 0; });
+      }
+    } catch (e) {}
     // guarda o resultado no cache da Vercel por 30 dias pra economizar a cota
     res.setHeader('Cache-Control', 'public, s-maxage=2592000, stale-while-revalidate=86400');
     return res.status(200).json({ items });
