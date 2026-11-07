@@ -150,15 +150,17 @@ nav button.on{color:#fff}
 .tuner .dot{position:absolute;top:50%;left:50%;width:16px;height:16px;border-radius:50%;background:var(--tx3);transform:translate(-50%,-50%);transition:left .12s,background .12s}
 .tapplay{position:absolute;inset:0;z-index:12;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.72);color:#fff;font-weight:700;border:0;width:100%}
 .tapplay .playbtn{width:72px;height:72px}
+.taphint{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;background:linear-gradient(transparent,rgba(0,0,0,.85));color:#fff;font-weight:700;font-size:13px;text-align:center;padding:18px 6px 6px}
 .tapplay .playbtn svg{width:36px;height:36px}
 #np .video{position:relative}
 /* letra sincronizada (estilo Spotify) */
-.lyr{overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent);mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent)}
-.lyr .ln{font-weight:800;line-height:1.25;color:rgba(255,255,255,.55);margin:0 0 .55em;transition:color .25s,transform .25s;transform-origin:left center}
+.lyr{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;position:relative;-webkit-mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent);mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent)}
+.lyr::-webkit-scrollbar{display:none}
+.lyr .ln{cursor:pointer;font-weight:800;line-height:1.25;color:rgba(255,255,255,.55);margin:0 0 .55em;transition:color .25s,transform .25s;transform-origin:left center}
 .lyr .ln.past{color:rgba(255,255,255,.5)}
 .lyr .ln.cur{color:#fff;transform:scale(1.05);text-shadow:0 2px 18px rgba(0,0,0,.25)}
 .lyr .ln.gap{color:transparent;height:.6em}
-.lyr .inner{padding-right:6%;transition:transform .45s cubic-bezier(.2,.7,.2,1);will-change:transform}
+.lyr .inner{padding:30% 6% 45% 0}
 .lyr .empty{color:rgba(255,255,255,.7);font-weight:700}
 .sync{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12px;color:rgba(255,255,255,.75)}
 .sync button{background:rgba(0,0,0,.3);border-radius:99px;padding:6px 12px;font-weight:700;font-size:13px}
@@ -166,7 +168,7 @@ nav button.on{color:#fff}
 .vtog button{padding:6px 12px;border-radius:99px;background:rgba(255,255,255,.12);font-size:13px;font-weight:700}
 .vtog button.on{background:#fff;color:#000}
 #np.lyrmode{background:var(--lyrbg,#1c3d8f)}
-#np.lyrmode .video{width:42%;align-self:flex-end;margin:6px 0 0}
+#np.lyrmode .video{width:52%;align-self:flex-end;margin:6px 0 0}
 #npLyrics{flex:1;min-height:0;margin-top:10px;font-size:27px}
 #np.lyrmode .nph{order:0}#np.lyrmode #npMedia{order:1}#np.lyrmode #npTitle{order:2;margin-top:-4px}#np.lyrmode #npArtist{order:3}
 #np.lyrmode #npLyrics{order:4}#np.lyrmode #npSync{order:5;margin-top:8px}#np.lyrmode #npBtns{order:6;margin-top:10px!important}
@@ -482,21 +484,26 @@ const Lyrics={
 const LYR_COLORS=['#1c3d8f','#7a1f4a','#0f5c4d','#6b3fa0','#9a3412','#1e3a5f','#8a1538','#2f4f1f'];
 function lyrColor(t){let h=0;for(const c of (t.artist+t.title))h=(h*31+c.charCodeAt(0))>>>0;return LYR_COLORS[h%LYR_COLORS.length]}
 class LyricsView{
-  constructor(el){this.el=el;this.el.classList.add('lyr');this.el.innerHTML='<div class="inner"></div>';this.inner=el.firstChild;this.lines=null;this.idx=-2}
+  constructor(el,onSeek){
+    this.el=el;this.onSeek=onSeek;this.el.classList.add('lyr');this.el.innerHTML='<div class="inner"></div>';this.inner=el.firstChild;this.lines=null;this.idx=-2;this.userUntil=0;
+    const hold=()=>{this.userUntil=Date.now()+4000};
+    ['touchstart','touchmove','wheel','pointerdown'].forEach(ev=>el.addEventListener(ev,hold,{passive:true}));
+    this.inner.addEventListener('click',e=>{const r=e.target.closest('.ln');if(!r||!this.lines)return;const k=this.rows.indexOf(r);if(k>=0){this.userUntil=0;this.onSeek?.(this.lines[k].t)}});
+  }
   set(lines,msg){
     this.lines=lines;this.idx=-2;
-    if(!lines||!lines.length){this.inner.innerHTML=`<div class="empty">${esc(msg||'Letra sincronizada não encontrada pra essa música')}</div>`;this.inner.style.transform='';return}
+    if(!lines||!lines.length){this.inner.innerHTML=`<div class="empty">${esc(msg||'Letra sincronizada não encontrada pra essa música')}</div>`;this.el.scrollTop=0;return}
     this.inner.innerHTML=lines.map(l=>`<div class="ln${l.text?'':' gap'}">${esc(l.text||'·')}</div>`).join('');
-    this.rows=[...this.inner.children];this.update(0,true);
+    this.rows=[...this.inner.children];this.el.scrollTop=0;this.update(0,true);
   }
   update(t,force){
     if(!this.lines||!this.lines.length)return;
     let i=-1;for(let k=0;k<this.lines.length;k++){if(this.lines[k].t<=t)i=k;else break}
-    if(i===this.idx&&!force)return;this.idx=i;
-    this.rows.forEach((r,k)=>{r.classList.toggle('cur',k===i);r.classList.toggle('past',k<i)});
+    const changed=i!==this.idx;
+    if(changed){this.idx=i;this.rows.forEach((r,k)=>{r.classList.toggle('cur',k===i);r.classList.toggle('past',k<i)})}
+    if((!changed&&!force)||Date.now()<this.userUntil)return;
     const target=this.rows[Math.max(0,i)];if(!target)return;
-    const y=target.offsetTop-this.el.clientHeight*0.32;
-    this.inner.style.transform=`translateY(${-Math.max(0,y)}px)`;
+    this.el.scrollTo({top:Math.max(0,target.offsetTop-this.el.clientHeight*0.32),behavior:force?'auto':'smooth'});
   }
 }
 // liga a letra ao player do hub (tela ou modo solo)
@@ -514,7 +521,8 @@ function bindLyrics(hub,view,onState){
     raf=requestAnimationFrame(loop);
     const it=hub.state.current;if(!it||!hub.player||!view.lines)return;
     let t=0;try{t=hub.player.getCurrentTime()||0}catch(e){}
-    view.update(t-Lyrics.getOffset(it));
+    view.update(t-Lyrics.getOffset(it),view._wasHeld&&Date.now()>=view.userUntil);
+    view._wasHeld=Date.now()<view.userUntil;
   };
   loop();
 }
@@ -646,7 +654,7 @@ class Hub{
     await loadYT();
     this.setDiag('Preparando o player…');
     return this.player=await new Promise(res=>{
-      const p=new YT_API.Player(this.playerEl,{width:'100%',height:'100%',playerVars:{autoplay:1,controls:0,rel:0,modestbranding:1,playsinline:1,iv_load_policy:3,fs:0,disablekb:1},
+      const p=new YT_API.Player(this.playerEl,{width:'100%',height:'100%',playerVars:{autoplay:1,controls:this.showControls?1:0,rel:0,modestbranding:1,playsinline:1,iv_load_policy:3,fs:0,disablekb:1},
         events:{onReady:()=>{clearTimeout(warn);this.setDiag('Player pronto');res(p)},onStateChange:e=>this.onYT(e),onError:e=>this.onYTError(e)}});
     });
   }
@@ -686,7 +694,12 @@ class Hub{
   }
   armStartCheck(){
     clearTimeout(this.startCheck);
-    this.startCheck=setTimeout(()=>{if(this.state.phase==='playing'&&!this.state.playing)this.setNeedTap(true)},3500);
+    this.startCheck=setTimeout(()=>{
+      if(this.state.phase!=='playing'||this.state.playing)return;
+      let st=-1;try{st=this.player?this.player.getPlayerState():-1}catch(e){}
+      if(st===3){this.armStartCheck();return} // ainda carregando: espera mais
+      this.setNeedTap(true);
+    },3500);
   }
   setDiag(t){dbg('player: '+t);this.diag=t;this.diagListeners?.forEach(f=>f(t))}
   onDiag(fn){(this.diagListeners||(this.diagListeners=new Set())).add(fn)}
@@ -820,7 +833,7 @@ function runScreen(){
       if(n)$('#ovNext').innerHTML=`Próxima<b>${esc(n.track.title)}</b>${esc(n.singer)}${s.queue.length>1?` · +${s.queue.length-1} na fila`:''}`;
     }else $('#ovNext').classList.add('hidden');
   }
-  const scrLyr=new LyricsView($('#scrLyr'));
+  const scrLyr=new LyricsView($('#scrLyr'),t=>{const it=hub.state.current;if(it&&hub.player)hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)),true)});
   let hasLyr=false;
   const applyView=()=>{const on=hasLyr&&(hub.state.view||store.get('view','letra'))==='letra'&&hub.state.phase==='playing';$('#scr').classList.toggle('lyr-on',on)};
   bindLyrics(hub,scrLyr,(it,lines)=>{
@@ -884,19 +897,19 @@ function runRemote(solo){
 
   // ---------- conexão ----------
   if(solo){
-    $('#npMedia').innerHTML='<div class="video"><div id="soloPlayer"></div><button class="tapplay hidden" id="soloTap"><span class="playbtn">'+ICONS.play+'</span>Toque para começar</button></div><div id="soloDiag" class="muted" style="font-size:12px;margin:-6px 0 8px"></div>';
+    $('#npMedia').innerHTML='<div class="video"><div id="soloPlayer"></div><div class="taphint hidden" id="soloTap">Toque no ▶ do vídeo para começar</div></div><div id="soloDiag" class="muted" style="font-size:12px;margin:4px 0 2px"></div>';
     $('.livebox').classList.add('hidden');
     $('#npWhere').textContent='Tocando neste aparelho';
-    hub=new Hub($('#soloPlayer'));
+    hub=new Hub($('#soloPlayer'));hub.showControls=true;
     tr={send:m=>hub.handle(m)};connected=true;
     hub.sub(s=>onState(s));
     hub.onResult(r=>onResultMsg(r));
     hub.subLive(m=>paintLive(m));
     hub.onNeedTap(v=>$('#soloTap').classList.toggle('hidden',!v));
-    $('#soloTap').onclick=()=>hub.tapPlay();
+
     hub.onDiag(t=>{$('#soloDiag').textContent=t==='Tocando'?'':t});
     hub.ensurePlayer(); // prepara o YouTube logo ao abrir, pra música começar mais rápido
-    const soloLyr=new LyricsView($('#npLyrics'));
+    const soloLyr=new LyricsView($('#npLyrics'),t=>{const it=hub.state.current;if(it&&hub.player){hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)),true);hub.player.playVideo()}});
     bindLyrics(hub,soloLyr,(it,lines)=>{hub.state.hasLyr=!!(lines&&lines.length);if(it)$('#np').style.setProperty('--lyrbg',lyrColor(it.track));applyNpView()});
   }else{
     const code=(params.get('sala')||store.get('joined','')).toUpperCase();
