@@ -276,6 +276,7 @@ nav button.on{color:#fff}
     <div><div class="num" id="ovNum">0</div><small>pontos</small><div class="ov-combo" id="ovCombo"></div></div>
   </div>
   <div class="ov ov-code" id="ovCode"></div>
+  <div class="ov hidden" id="scrDiag" style="left:50%;bottom:2.2vw;transform:translateX(-50%);background:rgba(0,0,0,.6);padding:.5vw 1vw;border-radius:8px;font-size:1vw;color:var(--tx2);z-index:11"></div>
   <div class="idle" id="idle"></div>
   <div class="result hidden" id="result"></div>
   <button class="tapplay hidden focusable" id="scrTap" style="font-size:2vw"><span class="playbtn" style="width:8vw;height:8vw"><svg viewBox="0 0 24 24" style="width:4vw;height:4vw"><path d="M8 5v14l11-7z"/></svg></span>Aperte OK para começar a música</button>
@@ -537,11 +538,13 @@ class Hub{
     return this.playerP;
   }
   async _makePlayer(){
-    const warn=setTimeout(()=>toast('O YouTube está demorando pra carregar. Confira a internet.',5000),10000);
+    const warn=setTimeout(()=>{this.setDiag('YouTube não respondeu (player não ficou pronto)');this.setNeedTap(true)},9000);
+    this.setDiag('Carregando o YouTube…');
     await loadYT();
+    this.setDiag('Preparando o player…');
     return this.player=await new Promise(res=>{
       const p=new YT_API.Player(this.playerEl,{width:'100%',height:'100%',playerVars:{autoplay:1,controls:0,rel:0,modestbranding:1,playsinline:1,iv_load_policy:3,fs:0,disablekb:1},
-        events:{onReady:()=>{clearTimeout(warn);res(p)},onStateChange:e=>this.onYT(e),onError:e=>this.onYTError(e)}});
+        events:{onReady:()=>{clearTimeout(warn);this.setDiag('Player pronto');res(p)},onStateChange:e=>this.onYT(e),onError:e=>this.onYTError(e)}});
     });
   }
   handle(m){
@@ -572,6 +575,7 @@ class Hub{
     this.emit();
     const p=await this.ensurePlayer();
     if(this.state.current!==it)return;
+    this.setDiag('Abrindo o vídeo '+it.video.id+'…');
     p.loadVideoById(it.video.id);
     this.armStartCheck();
   }
@@ -579,11 +583,18 @@ class Hub{
     clearTimeout(this.startCheck);
     this.startCheck=setTimeout(()=>{if(this.state.phase==='playing'&&!this.state.playing)this.setNeedTap(true)},3500);
   }
+  setDiag(t){this.diag=t;this.diagListeners?.forEach(f=>f(t))}
+  onDiag(fn){(this.diagListeners||(this.diagListeners=new Set())).add(fn)}
   setNeedTap(v){if(this.needTap===v)return;this.needTap=v;this.tapListeners?.forEach(f=>f(v))}
   onNeedTap(fn){(this.tapListeners||(this.tapListeners=new Set())).add(fn)}
-  tapPlay(){this.setNeedTap(false);this.player?.playVideo();this.armStartCheck()}
+  tapPlay(){
+    this.setNeedTap(false);
+    if(!this.player){this.playerP=null;const it=this.state.current;if(it){this.state.queue.unshift(it);this.state.current=null;this.next(false)}return}
+    this.player.playVideo();this.armStartCheck();
+  }
   onYT(e){
     const S=YT_API.PlayerState;
+    this.setDiag({'-1':'Vídeo carregado, aguardando','0':'Terminou','1':'Tocando','2':'Pausado','3':'Carregando o vídeo…','5':'Vídeo pronto, aguardando'}[e.data]||('estado '+e.data));
     if(e.data===S.PLAYING){clearTimeout(this.startCheck);this.setNeedTap(false);this.state.playing=true;this.state.dur=this.player.getDuration();this.tick();this.emit()}
     else if(e.data===S.PAUSED){this.state.playing=false;this.emit()}
     else if(e.data===S.ENDED){this.state.playing=false;this.finish()}
@@ -594,7 +605,7 @@ class Hub{
   }
   onYTError(e){
     const it=this.state.current;if(!it)return;
-    console.warn('YouTube erro',e&&e.data);
+    console.warn('YouTube erro',e&&e.data);this.setDiag('Erro do YouTube: '+(e&&e.data));
     const alt=it.video.alts?.[this.tries++];
     if(alt){toast('Essa versão não pode tocar aqui, tentando outra…');it.video.id=alt;this.player.loadVideoById(alt)}
     else{toast('Não consegui tocar essa música (erro '+(e&&e.data)+'), indo pra próxima',4500);this.next(false)}
@@ -719,6 +730,7 @@ function runScreen(){
     if(m.last.midi!=null){const off=(m.last.midi-Math.round(m.last.midi));dot.style.top=(50+off*80)+'%';dot.style.background=m.last.acc>.6?'var(--ok)':m.last.acc>.3?'var(--warn)':'var(--bad)'}
     else{dot.style.top='50%';dot.style.background='var(--tx3)'}
   });
+  hub.onDiag(t=>{const d=$('#scrDiag');d.textContent=t;d.classList.toggle('hidden',t==='Tocando')});
   hub.onNeedTap(v=>{const b=$('#scrTap');b.classList.toggle('hidden',!v);if(v)b.focus()});
   $('#scrTap').onclick=()=>hub.tapPlay();
   hub.onResult(r=>{
@@ -757,7 +769,7 @@ function runRemote(solo){
 
   // ---------- conexão ----------
   if(solo){
-    $('#npMedia').innerHTML='<div class="video"><div id="soloPlayer"></div><button class="tapplay hidden" id="soloTap"><span class="playbtn">'+ICONS.play+'</span>Toque para começar</button></div>';
+    $('#npMedia').innerHTML='<div class="video"><div id="soloPlayer"></div><button class="tapplay hidden" id="soloTap"><span class="playbtn">'+ICONS.play+'</span>Toque para começar</button></div><div id="soloDiag" class="muted" style="font-size:12px;margin:-6px 0 8px"></div>';
     $('.livebox').classList.add('hidden');
     $('#npWhere').textContent='Tocando neste aparelho';
     hub=new Hub($('#soloPlayer'));
@@ -767,6 +779,7 @@ function runRemote(solo){
     hub.subLive(m=>paintLive(m));
     hub.onNeedTap(v=>$('#soloTap').classList.toggle('hidden',!v));
     $('#soloTap').onclick=()=>hub.tapPlay();
+    hub.onDiag(t=>{$('#soloDiag').textContent=t});
   }else{
     const code=(params.get('sala')||store.get('joined','')).toUpperCase();
     if(code)connect(code);
