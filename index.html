@@ -383,7 +383,7 @@ const GENRES=[
 /* =========================================================
    YouTube: encontrar vídeo de karaokê
    ========================================================= */
-const YT={
+const YTS={
   key(){return store.get('ytkey','')},
   // busca pelo servidor (chave guardada na Vercel); se houver chave própria salva no aparelho, usa ela
   async search(q,max){
@@ -844,7 +844,7 @@ function runRemote(solo){
     if(!me){askName(()=>sing(track,now));return}
     toast(now?'Preparando…':'Buscando a versão karaokê…',1500);
     try{
-      const video=await YT.find(track);
+      const video=await YTS.find(track);
       tr.send({t:'add',now,item:{track,video,singer:me}});
       toast(now?`Vai tocar: ${track.title}`:`${track.title} entrou na fila`);
     }catch(e){
@@ -860,10 +860,10 @@ function runRemote(solo){
       (a,close)=>{close();if(a==='now')sing(t,true);else if(a==='q')sing(t,false);else if(a==='art')push({v:'artist',id:t.artistId});else if(a==='ver')versionSheet(t)});
   }
   async function versionSheet(t){
-    let list;try{list=await YT.options(t)}catch(e){return toast(e.message)}
+    let list;try{list=await YTS.options(t)}catch(e){return toast(e.message)}
     sheet(`<div class="note" style="padding:6px 16px 10px">Escolha a versão do vídeo de ${esc(t.title)}. Fica salva pras próximas vezes.</div>`+
       list.map((v,i)=>`<button class="opt" data-a="${i}"><img src="${esc(v.thumb)}" style="width:64px;height:48px;border-radius:4px;object-fit:cover" alt=""><div style="min-width:0"><div class="ell" style="font-size:14px">${esc(v.title)}</div><small class="muted">${esc(v.ch)}</small></div></button>`).join(''),
-      (a,close)=>{close();const v=list[+a];YT.setChoice(t,{id:v.id,title:v.title,alts:list.filter(x=>x.id!==v.id).map(x=>x.id)});toast('Versão salva');trackSheet(t)});
+      (a,close)=>{close();const v=list[+a];YTS.setChoice(t,{id:v.id,title:v.title,alts:list.filter(x=>x.id!==v.id).map(x=>x.id)});toast('Versão salva');trackSheet(t)});
   }
 
   // ---------- folhas (sheets) ----------
@@ -987,13 +987,13 @@ function runRemote(solo){
       $$('[data-g]',box).forEach(b=>b.onclick=()=>{const g=GENRES.find(x=>x.k===b.dataset.g);push({v:'list',title:g.n,color:g.c,load:()=>g.k==='top'?Catalog.topBrasil():Catalog.genre(g.q)})});
       return;
     }
-    const yid=YT.parseUrl(q);
+    const yid=YTS.parseUrl(q);
     if(yid){
       box.innerHTML=`<div class="list"><button class="trk" id="ytl"><img src="https://i.ytimg.com/vi/${yid}/default.jpg" alt=""><div class="t"><b>Vídeo do YouTube</b><small>Toque pra cantar este link</small></div></button></div>`;
       $('#ytl').onclick=()=>{
         const name=prompt('Nome da música (pra fila e ranking):','Música do YouTube')||'Música do YouTube';
         const t={id:'yt'+yid,title:name,artist:'YouTube',cover:`https://i.ytimg.com/vi/${yid}/hqdefault.jpg`,coverXl:`https://i.ytimg.com/vi/${yid}/hqdefault.jpg`};
-        YT.setChoice(t,{id:yid,title:name,alts:[]});sing(t,state.phase==='idle');
+        YTS.setChoice(t,{id:yid,title:name,alts:[]});sing(t,state.phase==='idle');
       };return;
     }
     box.innerHTML='<div class="empty">Buscando…</div>';
