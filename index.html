@@ -156,7 +156,8 @@ nav button.on{color:#fff}
 /* letra sincronizada (estilo Spotify) */
 .lyr{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;position:relative;-webkit-mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent);mask-image:linear-gradient(transparent,#000 12%,#000 80%,transparent)}
 .lyr::-webkit-scrollbar{display:none}
-.lyr .ln{cursor:pointer;font-weight:800;line-height:1.25;color:rgba(255,255,255,.55);margin:0 0 .55em;transition:color .25s,transform .25s;transform-origin:left center}
+.lyr .ln.synced{color:#1fdf64!important}
+.lyr .ln{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;cursor:pointer;font-weight:800;line-height:1.25;color:rgba(255,255,255,.55);margin:0 0 .55em;transition:color .25s,transform .25s;transform-origin:left center}
 .lyr .ln.past{color:rgba(255,255,255,.5)}
 .lyr .ln.cur{color:#ffd23d;transform:scale(1.05);text-shadow:0 2px 18px rgba(0,0,0,.25)}
 .lyr .ln.gap{color:transparent;height:.6em}
@@ -279,7 +280,7 @@ nav button.on{color:#fff}
     </div>
     <div id="npMedia"></div>
     <div id="npLyrics" class="hidden"></div>
-    <div class="sync hidden" id="npSync">Sincronia da letra <button data-d="-0.5">−0,5s</button><span id="npOff">0s</span><button data-d="0.5">+0,5s</button></div>
+    <div class="sync hidden" id="npSync" style="flex-wrap:wrap">Sincronia da letra <button data-d="-0.5">−0,5s</button><span id="npOff">0s</span><button data-d="0.5">+0,5s</button><small id="npSyncTip" style="width:100%;text-align:center;opacity:.8">Dica: segure o dedo na linha que está sendo cantada agora</small></div>
     <b id="npTitle" style="font-size:22px" class="ell"></b>
     <span id="npArtist" class="muted"></span>
     <div class="livebox">
@@ -449,7 +450,7 @@ const YTS={
     const score=i=>(/karaok/i.test(i.title)?3:0)+(/playback|instrumental|sem voz/i.test(i.title)?1:0)+(/live|ao vivo|reaction|cover/i.test(i.title)?-2:0)+durScore(i);
     items.sort((a,b)=>score(b)-score(a));
     const top=items[0],diff=(td&&top.dur)?top.dur-td:0;
-    const v={id:top.id,title:top.title,dur:top.dur||0,offset:(diff>0&&diff<=15)?diff:0,alts:items.slice(1).map(i=>i.id)};
+    const v={id:top.id,title:top.title,dur:top.dur||0,offset:(diff>0&&diff<=20)?Math.round(diff*5)/10:0,alts:items.slice(1).map(i=>i.id)};
     vc[k]=v;store.set('vcache',vc);return v;
   },
   async options(t){return this.search(`${t.artist} ${t.title} karaoke`,10)},
@@ -481,14 +482,24 @@ const Lyrics={
   getOffset(it){const o=store.get(this.offKey(it.track),null);return o!=null?o:(it.video.offset||0)},
   setOffset(it,v){store.set(this.offKey(it.track),Math.round(v*10)/10)}
 };
+const LYR_LEAD=0.4; // segundos que a linha acende antes de ser cantada
 const LYR_COLORS=['#1c3d8f','#7a1f4a','#0f5c4d','#6b3fa0','#9a3412','#1e3a5f','#8a1538','#2f4f1f'];
 function lyrColor(t){let h=0;for(const c of (t.artist+t.title))h=(h*31+c.charCodeAt(0))>>>0;return LYR_COLORS[h%LYR_COLORS.length]}
 class LyricsView{
-  constructor(el,onSeek){
-    this.el=el;this.onSeek=onSeek;this.el.classList.add('lyr');this.el.innerHTML='<div class="inner"></div>';this.inner=el.firstChild;this.lines=null;this.idx=-2;this.userUntil=0;
+  constructor(el,onSeek,onSync){
+    this.el=el;this.onSeek=onSeek;this.onSync=onSync;this.el.classList.add('lyr');this.el.innerHTML='<div class="inner"></div>';this.inner=el.firstChild;this.lines=null;this.idx=-2;this.userUntil=0;
     const hold=()=>{this.userUntil=Date.now()+4000};
     ['touchstart','touchmove','wheel','pointerdown'].forEach(ev=>el.addEventListener(ev,hold,{passive:true}));
-    this.inner.addEventListener('click',e=>{const r=e.target.closest('.ln');if(!r||!this.lines)return;const k=this.rows.indexOf(r);if(k>=0){this.userUntil=0;this.onSeek?.(this.lines[k].t)}});
+    let lp=null,lpFired=false,sx=0,sy=0;
+    this.inner.addEventListener('pointerdown',e=>{
+      const r=e.target.closest('.ln');if(!r||!this.lines||!this.onSync)return;
+      lpFired=false;sx=e.clientX;sy=e.clientY;
+      lp=setTimeout(()=>{const k=this.rows.indexOf(r);if(k<0)return;lpFired=true;r.classList.add('synced');setTimeout(()=>r.classList.remove('synced'),600);navigator.vibrate?.(40);this.userUntil=0;this.onSync(this.lines[k].t)},550);
+    });
+    const cancel=e=>{if(lp&&(!e||e.type!=='pointermove'||Math.hypot(e.clientX-sx,e.clientY-sy)>10)){clearTimeout(lp);lp=null}};
+    ['pointerup','pointercancel','pointerleave','pointermove'].forEach(ev=>this.inner.addEventListener(ev,cancel));
+    this.inner.addEventListener('contextmenu',e=>e.preventDefault());
+    this.inner.addEventListener('click',e=>{if(lpFired){lpFired=false;return}const r=e.target.closest('.ln');if(!r||!this.lines)return;const k=this.rows.indexOf(r);if(k>=0){this.userUntil=0;this.onSeek?.(this.lines[k].t)}});
   }
   set(lines,msg){
     this.lines=lines;this.idx=-2;
@@ -521,7 +532,7 @@ function bindLyrics(hub,view,onState){
     raf=requestAnimationFrame(loop);
     const it=hub.state.current;if(!it||!hub.player||!view.lines)return;
     let t=0;try{t=hub.player.getCurrentTime()||0}catch(e){}
-    view.update(t-Lyrics.getOffset(it),view._wasHeld&&Date.now()>=view.userUntil);
+    view.update(t-Lyrics.getOffset(it)+LYR_LEAD,view._wasHeld&&Date.now()>=view.userUntil);
     view._wasHeld=Date.now()<view.userUntil;
   };
   loop();
@@ -669,6 +680,7 @@ class Hub{
       case 'live':this.live[m.uid]=m.sum;this.liveListeners.forEach(f=>f(m));return;
       case 'clearRank':this.state.ranking=[];store.set('ranking',[]);return this.emit();
       case 'view':this.state.view=m.v;store.set('view',m.v);return this.emit();
+      case 'syncline':if(this.state.current&&this.player){let now=0;try{now=this.player.getCurrentTime()}catch(e){};Lyrics.setOffset(this.state.current,now+LYR_LEAD-m.lt-0.05)}return this.emit();
       case 'offset':if(this.state.current){Lyrics.setOffset(this.state.current,Lyrics.getOffset(this.state.current)+m.d)}return this.emit();
     }
   }
@@ -833,7 +845,7 @@ function runScreen(){
       if(n)$('#ovNext').innerHTML=`Próxima<b>${esc(n.track.title)}</b>${esc(n.singer)}${s.queue.length>1?` · +${s.queue.length-1} na fila`:''}`;
     }else $('#ovNext').classList.add('hidden');
   }
-  const scrLyr=new LyricsView($('#scrLyr'),t=>{const it=hub.state.current;if(it&&hub.player)hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)),true)});
+  const scrLyr=new LyricsView($('#scrLyr'),t=>{const it=hub.state.current;if(it&&hub.player)hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)-LYR_LEAD),true)},lt=>hub.handle({t:'syncline',lt}));
   let hasLyr=false;
   const applyView=()=>{const on=hasLyr&&(hub.state.view||store.get('view','letra'))==='letra'&&hub.state.phase==='playing';$('#scr').classList.toggle('lyr-on',on)};
   bindLyrics(hub,scrLyr,(it,lines)=>{
@@ -909,7 +921,7 @@ function runRemote(solo){
 
     hub.onDiag(t=>{$('#soloDiag').textContent=t==='Tocando'?'':t});
     hub.ensurePlayer(); // prepara o YouTube logo ao abrir, pra música começar mais rápido
-    const soloLyr=new LyricsView($('#npLyrics'),t=>{const it=hub.state.current;if(it&&hub.player){hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)),true);hub.player.playVideo()}});
+    const soloLyr=new LyricsView($('#npLyrics'),t=>{const it=hub.state.current;if(it&&hub.player){hub.player.seekTo(Math.max(0,t+Lyrics.getOffset(it)-LYR_LEAD),true);hub.player.playVideo()}},lt=>{hub.handle({t:'syncline',lt});toast('Sincronia acertada pra essa música')});
     bindLyrics(hub,soloLyr,(it,lines)=>{hub.state.hasLyr=!!(lines&&lines.length);if(it)$('#np').style.setProperty('--lyrbg',lyrColor(it.track));applyNpView()});
   }else{
     const code=(params.get('sala')||store.get('joined','')).toUpperCase();
@@ -961,6 +973,7 @@ function runRemote(solo){
     $('#np').classList.toggle('lyrmode',lyr&&solo);
     $('#npLyrics').classList.toggle('hidden',!(lyr&&solo));
     $('#npSync').classList.toggle('hidden',!(has&&v==='letra'));
+    $('#npSyncTip').classList.toggle('hidden',!solo);
     const o=state.offset||0;$('#npOff').textContent=(o>0?'+':'')+String(o).replace('.',',')+'s';
   }
   $$('#vtog button').forEach(b=>b.onclick=()=>tr?.send({t:'view',v:b.dataset.v}));
