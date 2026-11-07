@@ -300,6 +300,10 @@ const store={
 };
 const uid=()=>Math.random().toString(36).slice(2,10);
 const params=new URLSearchParams(location.search);
+const DBG=[];function dbg(m){DBG.push(new Date().toISOString().slice(11,19)+' '+m);const el=document.getElementById('dbgLog');if(el)el.textContent=DBG.join('\n')}
+window.addEventListener('error',e=>dbg('ERRO JS: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno));
+window.addEventListener('unhandledrejection',e=>dbg('PROMISE: '+(e.reason&&e.reason.message||e.reason)));
+if(params.get('debug')){document.addEventListener('DOMContentLoaded',()=>{const d=document.createElement('pre');d.id='dbgLog';d.style.cssText='position:fixed;left:0;right:0;top:0;max-height:40vh;overflow:auto;z-index:99;background:rgba(0,0,0,.85);color:#0f0;font-size:11px;margin:0;padding:6px;white-space:pre-wrap';document.body.appendChild(d);dbg('debug ligado')})}
 const PEER_PREFIX='palco-karaoke-jr-';
 function toast(msg,ms=2600){
   document.querySelectorAll('.toast,.scrtoast').forEach(t=>t.remove());
@@ -423,8 +427,10 @@ function loadYT(){
   if(ytReady)return ytReady;
   ytReady=new Promise(res=>{
     if(window.YT&&window.YT.Player){YT_API=window.YT;return res(YT_API)}
-    window.onYouTubeIframeAPIReady=()=>{YT_API=window.YT;res(YT_API)};
-    const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';document.head.appendChild(s);
+    window.onYouTubeIframeAPIReady=()=>{dbg('API do YouTube pronta');YT_API=window.YT;res(YT_API)};
+    const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';
+    s.onload=()=>dbg('iframe_api baixado; YT.Player='+typeof(window.YT&&window.YT.Player));s.onerror=()=>dbg('FALHA ao baixar iframe_api');
+    document.head.appendChild(s);
   });
   return ytReady;
 }
@@ -583,7 +589,7 @@ class Hub{
     clearTimeout(this.startCheck);
     this.startCheck=setTimeout(()=>{if(this.state.phase==='playing'&&!this.state.playing)this.setNeedTap(true)},3500);
   }
-  setDiag(t){this.diag=t;this.diagListeners?.forEach(f=>f(t))}
+  setDiag(t){dbg('player: '+t);this.diag=t;this.diagListeners?.forEach(f=>f(t))}
   onDiag(fn){(this.diagListeners||(this.diagListeners=new Set())).add(fn)}
   setNeedTap(v){if(this.needTap===v)return;this.needTap=v;this.tapListeners?.forEach(f=>f(v))}
   onNeedTap(fn){(this.tapListeners||(this.tapListeners=new Set())).add(fn)}
