@@ -215,7 +215,7 @@ nav button.on{color:#fff}
   </button>
   <button class="mode focusable" data-mode="remote">
     <div class="ic"><svg viewBox="0 0 24 24"><path d="M17 1H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 18H7V5h10z"/></svg></div>
-    <div><b>Este é o controle</b><small>Celular: escolhe as músicas e vira o microfone</small></div>
+    <div><b>Este é o controle</b><small>Celular: escolhe as músicas e acompanha a fila</small></div>
   </button>
   <button class="mode focusable" data-mode="solo">
     <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z"/></svg></div>
@@ -229,8 +229,7 @@ nav button.on{color:#fff}
   <div id="mini" class="hidden">
     <img id="miniCover" alt="">
     <div class="t"><b id="miniTitle" class="ell"></b><small id="miniSub" class="ell"></small></div>
-    <button class="micbtn" id="miniMic" aria-label="Microfone"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z"/></svg></button>
-    <button class="micbtn" id="miniPause" aria-label="Pausar"></button>
+        <button class="micbtn" id="miniPause" aria-label="Pausar"></button>
     <div class="bar"><i id="miniBar"></i></div>
   </div>
   <nav>
@@ -252,13 +251,12 @@ nav button.on{color:#fff}
       <div><div class="livescore" id="npScore">--</div><div class="muted" style="font-size:11px;text-align:center">pontos</div></div>
       <div style="flex:1">
         <div class="tuner"><div class="mid"></div><div class="dot" id="npDot"></div></div>
-        <div class="muted" style="font-size:12px;margin-top:6px" id="npHint">Ligue o microfone pra pontuar</div>
+        <div class="muted" style="font-size:12px;margin-top:6px" id="npHint">A pontuação aparece quando a música começar</div>
       </div>
     </div>
     <div id="npResult" class="hidden"></div>
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:center">
-      <button class="btn btn-ac" id="npMic">Ligar microfone</button>
-      <button class="btn btn-ghost" id="npSkip">Pular</button>
+            <button class="btn btn-ghost" id="npSkip">Pular</button>
     </div>
     <div id="npNext" style="margin-top:18px;overflow-y:auto;flex:1;min-height:0"></div>
   </div>
@@ -488,6 +486,20 @@ class Scorer{
   }
   summary(){return computeScore(this.s)}
 }
+// Liga a escuta automaticamente no aparelho que toca a música (microfone externo conectado nele)
+function autoScore(hub){
+  if(hub.scorer)return hub.scorer;
+  let lastSend=0,lastUid=null;
+  const sc=new Scorer((sum,last,cal)=>{
+    const cur=hub.state.current;if(!cur)return;
+    if(cur.uid!==lastUid){lastUid=cur.uid;sc.reset();return}
+    if(hub.state.playing&&Date.now()-lastSend>200){lastSend=Date.now();hub.handle({t:'live',uid:cur.uid,sum,last,cal})}
+  });
+  sc.active=()=>hub.state.playing&&hub.state.phase==='playing';
+  hub.scorer=sc;
+  sc.start().then(()=>{hub.micOk=true}).catch(()=>{hub.micOk=false;hub.scorer=null;toast('Nenhum microfone encontrado: as músicas tocam, mas sem pontuação',4500)});
+  return sc;
+}
 function computeScore(s){
   if(!s||!s.frames)return{score:0,afin:0,estab:0,pres:0,combo:0,maxCombo:0,frames:0};
   const afin=s.voiced?s.acc/s.voiced:0;
@@ -601,6 +613,7 @@ function screenTransport(hub,code,onStatus){
   start();
   hub.sub(s=>{const msg={t:'state',s};conns.forEach(c=>{try{c.send(msg)}catch(e){}})});
   hub.onResult(r=>conns.forEach(c=>{try{c.send({t:'result',r})}catch(e){}}));
+  hub.subLive(m=>conns.forEach(c=>{try{c.send(m)}catch(e){}}));
   return{get code(){return code}};
 }
 function remoteTransport(code,onMsg,onStatus){
@@ -636,6 +649,7 @@ function runScreen(){
     try{await navigator.wakeLock?.request('screen')}catch(e){}
     document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible')try{await navigator.wakeLock?.request('screen')}catch(e){}});
     hub.ensurePlayer();
+    autoScore(hub);
   };
   setTimeout(()=>$('#startBtn').focus(),100);
 
@@ -695,7 +709,7 @@ function runScreen(){
       <div class="rate">${rating(r.score)}</div>
       <div class="det"><div><b>${r.sum.afin}%</b>afinação</div><div><b>${r.sum.estab}%</b>estabilidade</div><div><b>${r.sum.pres}%</b>presença</div><div><b>x${r.sum.maxCombo}</b>maior combo</div></div>
       <div class="nx">${n?`A seguir: <b>${esc(n.track.title)}</b> com ${esc(n.singer)}`:'Fila vazia, escolha a próxima no celular'}</div>`
-      :`<div class="who">${esc(r.singer)} cantou ${esc(r.title)}</div><div class="rate" style="margin-top:2vw">Sem microfone ligado, sem pontuação</div>
+      :`<div class="who">${esc(r.singer)} cantou ${esc(r.title)}</div><div class="rate" style="margin-top:2vw">Sem microfone conectado, sem pontuação</div>
       <div class="nx">${n?`A seguir: <b>${esc(n.track.title)}</b> com ${esc(n.singer)}`:'Fila vazia, escolha a próxima no celular'}</div>`;
     const big=$('#bigN');if(big){let v=0;const tgt=r.score;const iv=setInterval(()=>{v=Math.min(tgt,v+Math.max(1,Math.round(tgt/40)));big.textContent=v;if(v>=tgt)clearInterval(iv)},35)}
   });
@@ -718,7 +732,6 @@ function runRemote(solo){
   let tr=null,hub=null,connected=false;
   const view=$('#view');
   let tab='home',stack=[],chip='all';
-  let scorer=null,lastSend=0;
 
   // ---------- conexão ----------
   if(solo){
@@ -728,13 +741,14 @@ function runRemote(solo){
     tr={send:m=>hub.handle(m)};connected=true;
     hub.sub(s=>onState(s));
     hub.onResult(r=>onResultMsg(r));
+    hub.subLive(m=>paintLive(m));
   }else{
     const code=(params.get('sala')||store.get('joined','')).toUpperCase();
     if(code)connect(code);
   }
   function connect(code){
     tr?.close?.();store.set('joined',code);
-    tr=remoteTransport(code,m=>{if(m.t==='state')onState(m.s);else if(m.t==='result')onResultMsg(m.r)},
+    tr=remoteTransport(code,m=>{if(m.t==='state')onState(m.s);else if(m.t==='result')onResultMsg(m.r);else if(m.t==='live')paintLive(m)},
       st=>{const was=connected;connected=st==='ok';if(connected&&!was)toast('Conectado à tela '+code);if(tab==='queue'||tab==='home')render()});
     tr.code=code;
   }
@@ -742,7 +756,7 @@ function runRemote(solo){
     const prevUid=state.current?.uid;state=s;
     updateMini();updateNP();
     if(s._tick)return;
-    if(scorer&&s.current?.uid!==prevUid){scorer.reset()}
+    if(s.current?.uid!==prevUid){$('#npScore').textContent='--'}
     if(solo&&s.current&&s.current.uid!==prevUid)$('#np').classList.add('open');
     if(['queue','rank'].includes(tab)&&!stack.length)render();
   }
@@ -750,39 +764,20 @@ function runRemote(solo){
     const el=$('#npResult');el.classList.remove('hidden');
     el.innerHTML=r.sum&&r.sum.frames?`<div class="muted" style="font-size:13px">${esc(r.singer)} · ${esc(r.title)}</div><div class="big">${r.score}</div><div class="st">${stars(r.score)}</div><div class="rt">${rating(r.score)}</div>
       <div class="dt"><div><b>${r.sum.afin}%</b>afinação</div><div><b>${r.sum.estab}%</b>estabilidade</div><div><b>${r.sum.pres}%</b>presença</div><div><b>x${r.sum.maxCombo}</b>combo</div></div>`
-      :`<div class="rt">Sem microfone ligado, sem pontuação</div>`;
+      :`<div class="rt">Sem microfone conectado, sem pontuação</div>`;
     if(solo||r.singer===me)$('#np').classList.add('open');
   }
 
-  // ---------- microfone ----------
-  async function toggleMic(){
-    if(scorer){scorer.stop();scorer=null;updateMicUI();return}
-    if(!navigator.mediaDevices?.getUserMedia){toast('Este navegador não libera o microfone');return}
-    scorer=new Scorer((sum,last,calibrating)=>{
-      const cur=state.current;
-      if(cur&&state.playing&&Date.now()-lastSend>220){lastSend=Date.now();tr?.send({t:'live',uid:cur.uid,sum,last})}
-      paintLive(sum,last,calibrating);
-    });
-    scorer.active=()=>state.playing&&state.phase==='playing';
-    try{await scorer.start();toast('Microfone ligado. Os primeiros segundos calibram o som ambiente.',3500)}
-    catch(e){scorer=null;toast('Permita o uso do microfone pra pontuar')}
-    updateMicUI();
-  }
-  function updateMicUI(){
-    $('#miniMic').classList.toggle('on',!!scorer);
-    $('#npMic').textContent=scorer?'Desligar microfone':'Ligar microfone';
-    $('#npMic').className='btn '+(scorer?'btn-ghost':'btn-ac');
-    if(!scorer){$('#npHint').textContent='Ligue o microfone pra pontuar';$('#npScore').textContent='--'}
-  }
-  function paintLive(sum,last,cal){
+  // ---------- pontuação (vem da tela) ----------
+  function paintLive(m){
+    if(!state.current||m.uid!==state.current.uid)return;
+    const sum=m.sum,last=m.last;
     $('#npScore').textContent=sum.frames?sum.score:'--';
     const dot=$('#npDot');
     if(last.midi!=null){const off=last.midi-Math.round(last.midi);dot.style.left=(50+off*80)+'%';dot.style.background=last.acc>.6?'var(--ok)':last.acc>.3?'var(--warn)':'var(--bad)'}
     else{dot.style.left='50%';dot.style.background='var(--tx3)'}
-    $('#npHint').textContent=cal?'Calibrando com o som ambiente…':!state.playing?'Pausado':last.midi!=null?(last.acc>.6?'Afinado!':last.acc>.3?'Quase lá':'Fora do tom'):'Cante pra pontuar';
+    $('#npHint').textContent=m.cal?'Calibrando com o som ambiente…':!state.playing?'Pausado':last.midi!=null?(last.acc>.6?'Afinado!':last.acc>.3?'Quase lá':'Fora do tom'):'Cante pra pontuar';
   }
-  $('#miniMic').onclick=e=>{e.stopPropagation();toggleMic()};
-  $('#npMic').onclick=toggleMic;
   $('#npSkip').onclick=()=>tr?.send({t:'skip'});
   $('#miniPause').onclick=e=>{e.stopPropagation();tr?.send({t:state.playing?'pause':'resume'})};
   $('#mini').onclick=()=>$('#np').classList.add('open');
@@ -809,6 +804,7 @@ function runRemote(solo){
   async function sing(track,now){
     if(!solo&&!connected){toast('Conecte na tela primeiro (aba Fila)');return}
     if(!me){askName(()=>sing(track,now));return}
+    if(solo)autoScore(hub);
     toast(now?'Preparando…':'Buscando a versão karaokê…',1500);
     try{
       const video=await YT.find(track);
@@ -853,13 +849,13 @@ function runRemote(solo){
     const s=sheet(`
       <div class="field"><label>Seu nome de cantor</label><input id="sNm" value="${esc(me)}" maxlength="20"></div>
       <div class="note" style="padding:6px 16px">A chave do YouTube fica guardada no servidor do Palco. Não precisa configurar nada neste aparelho.</div>
-      <div class="field"><label>Sensibilidade do microfone</label><input id="sSens" type="range" min="0.5" max="2" step="0.1" value="${store.get('sens',1)}" style="padding:0"></div>
+      ${solo?`<div class="field"><label>Sensibilidade do microfone</label><input id="sSens" type="range" min="0.5" max="2" step="0.1" value="${store.get('sens',1)}" style="padding:0"></div>`:''}
       ${solo?'':`<div class="field"><label>Código da tela</label><input id="sCode" value="${esc(code)}" maxlength="4" style="text-transform:uppercase"></div>`}
       <div style="padding:10px 16px;display:flex;gap:10px"><button class="btn btn-ac" data-a="save" style="flex:1">Salvar</button><button class="btn btn-ghost" data-a="mode">Trocar modo</button></div>`,
       (a,close,el)=>{
         if(a==='mode'){store.set('mode',null);location.href=location.pathname;return}
         me=$('#sNm',el).value.trim()||me;store.set('me',me);
-        store.set('sens',+$('#sSens',el).value);if(scorer)scorer.sens=+$('#sSens',el).value;
+        if($('#sSens',el)){store.set('sens',+$('#sSens',el).value);if(hub?.scorer)hub.scorer.sens=+$('#sSens',el).value}
         const c=$('#sCode',el)?.value.trim().toUpperCase();if(c&&c!==tr?.code)connect(c);
         close();renderTop();toast('Salvo');
       });
@@ -1018,7 +1014,7 @@ function runRemote(solo){
       `<h2 style="font-size:17px">Melhores apresentações</h2>`+
       (r.length?`<div class="list">${r.slice(0,30).map((x,i)=>`<div class="trk"><span class="n">${i+1}</span><img src="${esc(x.cover)}" alt=""><div class="t"><b class="ell">${esc(x.title)}</b><small>🎤 ${esc(x.singer)} · ${stars(x.score)}</small></div><b style="color:var(--ac);font-size:18px">${x.score}</b></div>`).join('')}</div>
         <div style="padding:20px 16px"><button class="btn btn-ghost" id="clr" style="width:100%">Zerar ranking</button></div>`
-      :'<div class="empty">Ninguém pontuou ainda. Ligue o microfone durante a música pra entrar no ranking.</div>');
+      :'<div class="empty">Ninguém pontuou ainda. Cante no microfone conectado ao projetor pra entrar no ranking.</div>');
     bindTop();
     $('#clr')&&($('#clr').onclick=()=>{if(confirm('Zerar o ranking?'))tr?.send({t:'clearRank'})});
   }
