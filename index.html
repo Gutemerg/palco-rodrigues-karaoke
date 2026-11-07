@@ -381,27 +381,35 @@ const GENRES=[
    ========================================================= */
 const YT={
   key(){return store.get('ytkey','')},
+  // busca pelo servidor (chave guardada na Vercel); se houver chave própria salva no aparelho, usa ela
+  async search(q,max){
+    const own=this.key();
+    let items;
+    if(own){
+      const r=await fetch('https://www.googleapis.com/youtube/v3/search?'+new URLSearchParams({part:'snippet',type:'video',videoEmbeddable:'true',maxResults:String(max),q,key:own}));
+      const d=await r.json();
+      if(d.error)throw new Error(d.error.errors?.[0]?.reason==='quotaExceeded'?'Limite diário de buscas do YouTube atingido':(d.error.message||'Erro no YouTube'));
+      items=(d.items||[]).map(i=>({id:i.id.videoId,title:i.snippet.title,ch:i.snippet.channelTitle,thumb:i.snippet.thumbnails?.default?.url}));
+    }else{
+      let d;
+      try{const r=await fetch('/api/yt?'+new URLSearchParams({q,max}));d=await r.json()}
+      catch(e){throw new Error('Sem conexão com o servidor do Palco')}
+      if(d.error)throw new Error(d.error.message==='NOKEY_SERVER'?'A chave do YouTube ainda não foi configurada no servidor':d.error.message);
+      items=d.items||[];
+    }
+    return items.map(i=>({...i,title:decodeHtml(i.title||'')}));
+  },
   async find(t){
     const vc=store.get('vcache',{});const k=(t.artist+'|'+t.title).toLowerCase();
     if(vc[k])return vc[k];
-    const key=this.key();if(!key)throw new Error('NOKEY');
-    const q=`${t.artist} ${t.title} karaoke`;
-    const r=await fetch('https://www.googleapis.com/youtube/v3/search?'+new URLSearchParams({part:'snippet',type:'video',videoEmbeddable:'true',maxResults:'8',q,key}));
-    const d=await r.json();
-    if(d.error)throw new Error(d.error.errors?.[0]?.reason==='quotaExceeded'?'Limite diário de buscas do YouTube atingido':(d.error.message||'Erro no YouTube'));
-    const items=(d.items||[]).map(i=>({id:i.id.videoId,title:decodeHtml(i.snippet.title),ch:i.snippet.channelTitle}));
+    const items=await this.search(`${t.artist} ${t.title} karaoke`,8);
     if(!items.length)throw new Error('Nenhuma versão karaokê encontrada');
     const score=i=>(/karaok/i.test(i.title)?3:0)+(/playback|instrumental|sem voz/i.test(i.title)?1:0)+(/live|ao vivo|reaction|cover/i.test(i.title)?-2:0);
     items.sort((a,b)=>score(b)-score(a));
     const v={id:items[0].id,title:items[0].title,alts:items.slice(1).map(i=>i.id)};
     vc[k]=v;store.set('vcache',vc);return v;
   },
-  async options(t){
-    const key=this.key();if(!key)throw new Error('NOKEY');
-    const r=await fetch('https://www.googleapis.com/youtube/v3/search?'+new URLSearchParams({part:'snippet',type:'video',videoEmbeddable:'true',maxResults:'10',q:`${t.artist} ${t.title} karaoke`,key}));
-    const d=await r.json();if(d.error)throw new Error(d.error.message);
-    return (d.items||[]).map(i=>({id:i.id.videoId,title:decodeHtml(i.snippet.title),ch:i.snippet.channelTitle,thumb:i.snippet.thumbnails?.default?.url}));
-  },
+  async options(t){return this.search(`${t.artist} ${t.title} karaoke`,10)},
   setChoice(t,v){const vc=store.get('vcache',{});vc[(t.artist+'|'+t.title).toLowerCase()]=v;store.set('vcache',vc)},
   parseUrl(s){const m=String(s).match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);return m?m[1]:null}
 };
@@ -807,7 +815,7 @@ function runRemote(solo){
       tr.send({t:'add',now,item:{track,video,singer:me}});
       toast(now?`Vai tocar: ${track.title}`:`${track.title} entrou na fila`);
     }catch(e){
-      if(e.message==='NOKEY')openSettings(true);else toast(e.message,3500);
+      toast(e.message,3500);
     }
   }
   function trackSheet(t){
@@ -819,7 +827,7 @@ function runRemote(solo){
       (a,close)=>{close();if(a==='now')sing(t,true);else if(a==='q')sing(t,false);else if(a==='art')push({v:'artist',id:t.artistId});else if(a==='ver')versionSheet(t)});
   }
   async function versionSheet(t){
-    let list;try{list=await YT.options(t)}catch(e){if(e.message==='NOKEY')return openSettings(true);return toast(e.message)}
+    let list;try{list=await YT.options(t)}catch(e){return toast(e.message)}
     sheet(`<div class="note" style="padding:6px 16px 10px">Escolha a versão do vídeo de ${esc(t.title)}. Fica salva pras próximas vezes.</div>`+
       list.map((v,i)=>`<button class="opt" data-a="${i}"><img src="${esc(v.thumb)}" style="width:64px;height:48px;border-radius:4px;object-fit:cover" alt=""><div style="min-width:0"><div class="ell" style="font-size:14px">${esc(v.title)}</div><small class="muted">${esc(v.ch)}</small></div></button>`).join(''),
       (a,close)=>{close();const v=list[+a];YT.setChoice(t,{id:v.id,title:v.title,alts:list.filter(x=>x.id!==v.id).map(x=>x.id)});toast('Versão salva');trackSheet(t)});
@@ -843,21 +851,18 @@ function runRemote(solo){
   function openSettings(needKey){
     const code=tr?.code||'';
     const s=sheet(`
-      ${needKey?'<div class="note" style="color:var(--warn);padding:4px 16px 8px">Falta a chave do YouTube pra buscar as versões karaokê.</div>':''}
       <div class="field"><label>Seu nome de cantor</label><input id="sNm" value="${esc(me)}" maxlength="20"></div>
-      <div class="field"><label>Chave da API do YouTube</label><input id="sKey" value="${esc(YT.key())}" placeholder="AIza..." autocomplete="off"></div>
-      <div class="note">Grátis, no Google Cloud: crie um projeto, ative a <b>YouTube Data API v3</b> e gere uma chave em Credenciais. Dá umas 100 buscas por dia, e cada música fica guardada depois da 1ª vez. <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">Abrir o Google Cloud</a></div>
+      <div class="note" style="padding:6px 16px">A chave do YouTube fica guardada no servidor do Palco. Não precisa configurar nada neste aparelho.</div>
       <div class="field"><label>Sensibilidade do microfone</label><input id="sSens" type="range" min="0.5" max="2" step="0.1" value="${store.get('sens',1)}" style="padding:0"></div>
       ${solo?'':`<div class="field"><label>Código da tela</label><input id="sCode" value="${esc(code)}" maxlength="4" style="text-transform:uppercase"></div>`}
       <div style="padding:10px 16px;display:flex;gap:10px"><button class="btn btn-ac" data-a="save" style="flex:1">Salvar</button><button class="btn btn-ghost" data-a="mode">Trocar modo</button></div>`,
       (a,close,el)=>{
         if(a==='mode'){store.set('mode',null);location.href=location.pathname;return}
         me=$('#sNm',el).value.trim()||me;store.set('me',me);
-        store.set('ytkey',$('#sKey',el).value.trim());store.set('sens',+$('#sSens',el).value);if(scorer)scorer.sens=+$('#sSens',el).value;
+        store.set('sens',+$('#sSens',el).value);if(scorer)scorer.sens=+$('#sSens',el).value;
         const c=$('#sCode',el)?.value.trim().toUpperCase();if(c&&c!==tr?.code)connect(c);
         close();renderTop();toast('Salvo');
       });
-    if(needKey)setTimeout(()=>$('#sKey',s.el).focus(),50);
   }
 
   // ---------- navegação ----------
@@ -1020,7 +1025,6 @@ function runRemote(solo){
 
   render();
   if(!me)setTimeout(()=>askName(),400);
-  else if(!YT.key())setTimeout(()=>openSettings(true),600);
 }
 
 /* =========================================================
