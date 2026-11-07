@@ -15,7 +15,7 @@ module.exports = async (req, res) => {
   }
 
   const q = String(req.query.q || '').trim().slice(0, 200);
-  const max = Math.max(1, Math.min(10, parseInt(req.query.max || '8', 10) || 8));
+  const max = Math.max(1, Math.min(15, parseInt(req.query.max || '10', 10) || 10));
   if (!q) return res.status(400).json({ error: { message: 'Busca vazia' } });
 
   try {
@@ -37,14 +37,19 @@ module.exports = async (req, res) => {
     // duração de cada vídeo (ajuda a escolher a versão que bate com a letra)
     try {
       if (items.length) {
-        const r2 = await fetch('https://www.googleapis.com/youtube/v3/videos?' + new URLSearchParams({ part: 'contentDetails', id: items.map(i => i.id).join(','), key }));
+        const r2 = await fetch('https://www.googleapis.com/youtube/v3/videos?' + new URLSearchParams({ part: 'contentDetails,statistics', id: items.map(i => i.id).join(','), key }));
         const d2 = await r2.json();
-        const dur = {};
+        const info = {};
         (d2.items || []).forEach(v => {
           const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(v.contentDetails && v.contentDetails.duration || '');
-          if (m) dur[v.id] = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+          info[v.id] = {
+            dur: m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0,
+            hd: v.contentDetails && v.contentDetails.definition === 'hd',
+            views: +(v.statistics && v.statistics.viewCount) || 0,
+            likes: +(v.statistics && v.statistics.likeCount) || 0
+          };
         });
-        items.forEach(i => { i.dur = dur[i.id] || 0; });
+        items.forEach(i => Object.assign(i, info[i.id] || { dur: 0, hd: false, views: 0, likes: 0 }));
       }
     } catch (e) {}
     // guarda o resultado no cache da Vercel por 30 dias pra economizar a cota

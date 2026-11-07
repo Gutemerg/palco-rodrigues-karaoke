@@ -292,6 +292,7 @@ nav button.on{color:#fff}
     </div>
     <div id="npResult" class="hidden"></div>
     <div id="npBtns" style="display:flex;gap:10px;margin-top:16px;justify-content:center">
+            <button class="btn btn-ghost" id="npSwap">Trocar versão</button>
             <button class="btn btn-ghost" id="npSkip">Pular</button>
     </div>
     <div id="npNext" style="margin-top:18px;overflow-y:auto;flex:1;min-height:0"></div>
@@ -433,28 +434,48 @@ const YTS={
       items=(d.items||[]).map(i=>({id:i.id.videoId,title:i.snippet.title,ch:i.snippet.channelTitle,thumb:i.snippet.thumbnails?.default?.url}));
     }else{
       let d;
-      try{const r=await fetch('/api/yt?'+new URLSearchParams({q,max}));d=await r.json()}
+      try{const r=await fetch('/api/yt?'+new URLSearchParams({q,max,v:'2'}));d=await r.json()}
       catch(e){throw new Error('Sem conexão com o servidor do Palco')}
       if(d.error)throw new Error(d.error.message==='NOKEY_SERVER'?'A chave do YouTube ainda não foi configurada no servidor':d.error.message);
       items=d.items||[];
     }
     return items.map(i=>({...i,title:decodeHtml(i.title||'')}));
   },
-  async find(t){
-    const vc=store.get('vcache',{});const k=(t.artist+'|'+t.title).toLowerCase();
-    if(vc[k])return vc[k];
-    const items=await this.search(`${t.artist} ${t.title} karaoke`,8);
-    if(!items.length)throw new Error('Nenhuma versão karaokê encontrada');
-    const td=t.duration||0;
+  ck(t){return (t.artist+'|'+t.title).toLowerCase()},
+  // nota de cada versão: título, duração parecida com a original, HD, visualizações, curtidas e o que você já aprovou/descartou
+  rank(items,t){
+    const td=t.duration||0,chan=store.get('chan',{});
     const durScore=i=>{if(!td||!i.dur)return 0;const d=i.dur-td;return d>=-3&&d<=12?3:Math.abs(d)<=25?1:Math.abs(d)>45?-3:0};
-    const score=i=>(/karaok/i.test(i.title)?3:0)+(/playback|instrumental|sem voz/i.test(i.title)?1:0)+(/live|ao vivo|reaction|cover/i.test(i.title)?-2:0)+durScore(i);
-    items.sort((a,b)=>score(b)-score(a));
-    const top=items[0],diff=(td&&top.dur)?top.dur-td:0;
-    const v={id:top.id,title:top.title,dur:top.dur||0,offset:(diff>0&&diff<=20)?Math.round(diff*5)/10:0,alts:items.slice(1).map(i=>i.id)};
-    vc[k]=v;store.set('vcache',vc);return v;
+    const score=i=>{
+      let s=0;
+      if(/karaok/i.test(i.title))s+=3;
+      if(/playback|instrumental|sem voz|sem vocal/i.test(i.title))s+=1;
+      if(/\b(live|ao vivo|reaction|react|cover|tutorial|aula|como cantar|lyrics? video)\b/i.test(i.title))s-=3;
+      s+=durScore(i);
+      if(i.hd)s+=1;
+      if(i.views)s+=Math.max(-1.5,Math.min(3,Math.log10(i.views)-3.5));
+      if(i.views>500&&i.likes)s+=Math.min(1,(i.likes/i.views)*50);
+      s+=chan[i.ch]||0;
+      return s;
+    };
+    return items.map(i=>({...i,_s:score(i)})).sort((a,b)=>b._s-a._s);
   },
-  async options(t){return this.search(`${t.artist} ${t.title} karaoke`,10)},
-  setChoice(t,v){const vc=store.get('vcache',{});vc[(t.artist+'|'+t.title).toLowerCase()]=v;store.set('vcache',vc)},
+  pack(list,t){
+    const td=t.duration||0,top=list[0],diff=(td&&top.dur)?top.dur-td:0;
+    return {id:top.id,title:top.title,ch:top.ch||'',dur:top.dur||0,offset:(diff>0&&diff<=20)?Math.round(diff*5)/10:0,
+      alts:list.slice(1).map(i=>({id:i.id,ch:i.ch||'',dur:i.dur||0,title:i.title}))};
+  },
+  async find(t){
+    const vc=store.get('vcache2',{});const k=this.ck(t);
+    if(vc[k])return vc[k];
+    const items=await this.search(`${t.artist} ${t.title} karaoke`,10);
+    if(!items.length)throw new Error('Nenhuma versão karaokê encontrada');
+    const v=this.pack(this.rank(items,t),t);
+    vc[k]=v;store.set('vcache2',vc);return v;
+  },
+  async options(t){return this.rank(await this.search(`${t.artist} ${t.title} karaoke`,10),t)},
+  setChoice(t,v){const vc=store.get('vcache2',{});vc[this.ck(t)]=v;store.set('vcache2',vc)},
+  likeChannel(ch,d){if(!ch)return;const c=store.get('chan',{});c[ch]=Math.max(-6,Math.min(6,(c[ch]||0)+d));store.set('chan',c)},
   parseUrl(s){const m=String(s).match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);return m?m[1]:null}
 };
 const Lyrics={
@@ -537,6 +558,7 @@ function bindLyrics(hub,view,onState){
   };
   loop();
 }
+function fmtViews(n){return n>=1e6?(n/1e6).toFixed(1).replace('.',',')+' mi':n>=1e3?Math.round(n/1e3)+' mil':String(n)}
 function decodeHtml(s){const t=document.createElement('textarea');t.innerHTML=s;return t.value}
 let ytReady=null,YT_API=null;
 function loadYT(){
@@ -680,6 +702,7 @@ class Hub{
       case 'live':this.live[m.uid]=m.sum;this.liveListeners.forEach(f=>f(m));return;
       case 'clearRank':this.state.ranking=[];store.set('ranking',[]);return this.emit();
       case 'view':this.state.view=m.v;store.set('view',m.v);return this.emit();
+      case 'swap':return this.swap();
       case 'syncline':if(this.state.current&&this.player){let now=0;try{now=this.player.getCurrentTime()}catch(e){};Lyrics.setOffset(this.state.current,now+LYR_LEAD-m.lt-0.05)}return this.emit();
       case 'offset':if(this.state.current){Lyrics.setOffset(this.state.current,Lyrics.getOffset(this.state.current)+m.d)}return this.emit();
     }
@@ -736,7 +759,7 @@ class Hub{
   onYTError(e){
     const it=this.state.current;if(!it)return;
     console.warn('YouTube erro',e&&e.data);this.setDiag('Erro do YouTube: '+(e&&e.data));
-    const alt=it.video.alts?.[this.tries++];
+    const altO=it.video.alts?.[this.tries++];const alt=altO&&(altO.id||altO);
     if(alt){toast('Essa versão não pode tocar aqui, tentando outra…');it.video.id=alt;this.player.loadVideoById(alt)}
     else{toast('Não consegui tocar essa música (erro '+(e&&e.data)+'), indo pra próxima',4500);this.next(false)}
   }
@@ -751,12 +774,25 @@ class Hub{
     this.resultListeners?.forEach(f=>f(res));
     this.resultTimer=setTimeout(()=>this.next(false),this.state.queue.length?11000:14000);
   }
+  swap(){
+    const it=this.state.current;if(!it||!it.video.alts||!it.video.alts.length){toast('Não há outras versões dessa música');return}
+    const old=it.video;const alts=old.alts.map(a=>typeof a==='string'?{id:a}:a);
+    const nx=alts[0],td=it.track.duration||0,diff=(td&&nx.dur)?nx.dur-td:0;
+    it.video={id:nx.id,title:nx.title||'',ch:nx.ch||'',dur:nx.dur||0,offset:(diff>0&&diff<=20)?Math.round(diff*5)/10:0,
+      alts:[...alts.slice(1),{id:old.id,ch:old.ch||'',dur:old.dur||0,title:old.title||''}]};
+    this.tries=0;
+    this.swapListeners?.forEach(f=>f({key:YTS.ck(it.track),track:it.track,video:it.video,badCh:old.ch||''}));
+    toast('Trocando a versão…');
+    this.player?.loadVideoById(it.video.id);this.armStartCheck();this.emit();
+  }
+  onSwap(fn){(this.swapListeners||(this.swapListeners=new Set())).add(fn)}
   onResult(fn){(this.resultListeners||(this.resultListeners=new Set())).add(fn)}
 }
 
 /* =========================================================
    Transporte: celular <-> projetor (PeerJS / WebRTC)
    ========================================================= */
+function rememberSwap(m){YTS.setChoice(m.track,m.video);YTS.likeChannel(m.badCh,-2);YTS.likeChannel(m.video.ch,0.5)}
 function newRoomCode(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<4;i++)s+=a[Math.floor(Math.random()*a.length)];return s}
 function screenTransport(hub,code,onStatus){
   const conns=new Set();let peer;
@@ -775,6 +811,7 @@ function screenTransport(hub,code,onStatus){
   hub.sub(s=>{const msg={t:'state',s};conns.forEach(c=>{try{c.send(msg)}catch(e){}})});
   hub.onResult(r=>conns.forEach(c=>{try{c.send({t:'result',r})}catch(e){}}));
   hub.subLive(m=>conns.forEach(c=>{try{c.send(m)}catch(e){}}));
+  hub.onSwap(m=>conns.forEach(c=>{try{c.send({t:'swapped',m})}catch(e){}}));
   return{get code(){return code}};
 }
 function remoteTransport(code,onMsg,onStatus){
@@ -892,6 +929,7 @@ function runScreen(){
     const k=e.key;
     if(k==='Enter'||k===' '||k==='MediaPlayPause'){if(hub.needTap)hub.tapPlay();else hub.state.playing?hub.player?.pauseVideo():hub.player?.playVideo();e.preventDefault()}
     else if(k==='ArrowRight'||k==='MediaTrackNext'){hub.next(false)}
+    else if(k==='ArrowDown'){hub.swap()}
     else if(k==='ArrowUp'){hub.handle({t:'view',v:(hub.state.view||store.get('view','letra'))==='letra'?'video':'letra'})}
   });
 }
@@ -917,6 +955,7 @@ function runRemote(solo){
     hub.sub(s=>onState(s));
     hub.onResult(r=>onResultMsg(r));
     hub.subLive(m=>paintLive(m));
+    hub.onSwap(m=>rememberSwap(m));
     hub.onNeedTap(v=>$('#soloTap').classList.toggle('hidden',!v));
 
     hub.onDiag(t=>{$('#soloDiag').textContent=t==='Tocando'?'':t});
@@ -929,7 +968,7 @@ function runRemote(solo){
   }
   function connect(code){
     tr?.close?.();store.set('joined',code);
-    tr=remoteTransport(code,m=>{if(m.t==='state')onState(m.s);else if(m.t==='result')onResultMsg(m.r);else if(m.t==='live')paintLive(m)},
+    tr=remoteTransport(code,m=>{if(m.t==='state')onState(m.s);else if(m.t==='result')onResultMsg(m.r);else if(m.t==='live')paintLive(m);else if(m.t==='swapped'&&m.m.track&&state.current?.singer===me)rememberSwap(m.m)},
       st=>{const was=connected;connected=st==='ok';if(connected&&!was)toast('Conectado à tela '+code);if(tab==='queue'||tab==='home')render()});
     tr.code=code;
   }
@@ -976,6 +1015,7 @@ function runRemote(solo){
     $('#npSyncTip').classList.toggle('hidden',!solo);
     const o=state.offset||0;$('#npOff').textContent=(o>0?'+':'')+String(o).replace('.',',')+'s';
   }
+  $('#npSwap').onclick=()=>tr?.send({t:'swap'});
   $$('#vtog button').forEach(b=>b.onclick=()=>tr?.send({t:'view',v:b.dataset.v}));
   $$('#npSync button').forEach(b=>b.onclick=()=>tr?.send({t:'offset',d:+b.dataset.d}));
   function updateMini(){
@@ -1019,8 +1059,8 @@ function runRemote(solo){
   async function versionSheet(t){
     let list;try{list=await YTS.options(t)}catch(e){return toast(e.message)}
     sheet(`<div class="note" style="padding:6px 16px 10px">Escolha a versão do vídeo de ${esc(t.title)}. Fica salva pras próximas vezes.</div>`+
-      list.map((v,i)=>`<button class="opt" data-a="${i}"><img src="${esc(v.thumb)}" style="width:64px;height:48px;border-radius:4px;object-fit:cover" alt=""><div style="min-width:0"><div class="ell" style="font-size:14px">${esc(v.title)}</div><small class="muted">${esc(v.ch)}</small></div></button>`).join(''),
-      (a,close)=>{close();const v=list[+a];YTS.setChoice(t,{id:v.id,title:v.title,alts:list.filter(x=>x.id!==v.id).map(x=>x.id)});toast('Versão salva');trackSheet(t)});
+      list.map((v,i)=>`<button class="opt" data-a="${i}"><img src="${esc(v.thumb)}" style="width:64px;height:48px;border-radius:4px;object-fit:cover" alt=""><div style="min-width:0"><div class="ell" style="font-size:14px">${esc(v.title)}</div><small class="muted">${esc(v.ch)}${v.views?' · '+fmtViews(v.views):''}${v.hd?' · HD':''}</small></div></button>`).join(''),
+      (a,close)=>{close();const v=list[+a];const rest=list.filter(x=>x.id!==v.id);YTS.setChoice(t,YTS.pack([v,...rest],t));YTS.likeChannel(v.ch,2);toast('Versão salva');trackSheet(t)});
   }
 
   // ---------- folhas (sheets) ----------
